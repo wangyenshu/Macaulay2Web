@@ -55,6 +55,7 @@ Instead of a Macaulay2 server, the client can run Macaulay2 compiled to WebAssem
 
 * `./fetch-m2wasm [version]` installs the package with micromamba (downloaded if missing) into `public/m2wasm/`, gzipped.
 * The engine is chosen with `?engine=wasm` or `?engine=server`; the default is set at build time (`webpack --env wasm`). A server installation can therefore also offer the WebAssembly engine, after `./fetch-m2wasm`.
+
 | Build command | Default engine |
 | --- | --- |
 | `npm run build`, `docker`, `new`, `local`, `ssh`, `debug`) | server |
@@ -188,7 +189,7 @@ Individual build commands:
 * `npm run build:minimal`: build the minimal client bundle `public/minimal.js`.
 * `npm run build:tutorial`: build the standalone tutorial bundle `public/tutorial.js`.
 * `npm run build:css`: build `public/index.css`, `public/minimal.css`, and `public/tutorial.css`.
-* `npm run build:wasm`: build the client bundles with the WebAssembly engine as default, and fetch the engine (see above).
+* `npm run build:wasm`: build the client bundles with the WebAssembly engine as default, and fetch the engine.
 * `npm run build:debug`: build a non-production normal client bundle.
 * `npm run build:debug-minimal`: build a non-production minimal client bundle.
 * `npm run build:debug-tutorial`: build a non-production standalone tutorial bundle.
