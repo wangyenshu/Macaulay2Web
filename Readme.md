@@ -53,6 +53,19 @@ The default local server is plain HTTP on port `8002`.
 
 Instead of a Macaulay2 server, the client can run Macaulay2 compiled to WebAssembly in the browser: the [emscripten-forge `macaulay2` package](https://prefix.dev/channels/emscripten-forge-4x/packages/macaulay2) runs in a web worker as `M2 --webapp`, and the interface is unchanged. Only static files are needed, so this works on GitHub Pages.
 
+Guide for GitHub Pages Deployment:
+
+Clone the repository with `--recursive`.
+
+```bash
+npm install
+npm run build:wasm
+cp -rL public _site
+touch _site/.nojekyll
+```
+
+Then publish `_site` to desired branches (e.g. gh-pages).
+
 * `./fetch-m2wasm [version]` installs the package with micromamba (downloaded if missing) into `public/m2wasm/`, gzipped.
 * The engine is chosen with `?engine=wasm` or `?engine=server`; the default is set at build time (`webpack --env wasm`). A server installation can therefore also offer the WebAssembly engine, after `./fetch-m2wasm`.
 
