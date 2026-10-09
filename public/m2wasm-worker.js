@@ -10,6 +10,8 @@
 //     inside Macaulay2, so everything else (input, file requests) is fetched
 //     synchronously from the service worker (m2wasm-sw.js), as arrays of
 //     {t: "in", d: text} and {t: "fs", id, op, path, data}.
+// The home directory is kept by the service worker: restored before Macaulay2
+// starts, and saved whenever Macaulay2 waits for input.
 // (Everything is in a closure: M2-binary.js, loaded with importScripts, uses the global scope.)
 (() => {
   "use strict";
@@ -113,6 +115,110 @@
     }
   };
 
+  // ---- persistent storage of the home directory (see m2wasm-sw.js)
+  // what was last saved: path (relative to home) -> "mtime size inode" for a
+  // file, "" for a directory; null when there is no storage
+  let saved = null;
+  const scanHome = function (FS) {
+    const result = new Map();
+    const scan = function (dir, prefix) {
+      for (const name of FS.readdir(dir)) {
+        if (name == "." || name == "..") continue;
+        const st = FS.lstat(dir + "/" + name);
+        if (FS.isDir(st.mode)) {
+          result.set(prefix + name, "");
+          scan(dir + "/" + name, prefix + name + "/");
+        } else if (FS.isFile(st.mode))
+          result.set(prefix + name, +st.mtime + " " + st.size + " " + st.ino);
+      }
+    };
+    scan(home, "");
+    return result;
+  };
+
+  // same format as in m2wasm-sw.js
+  const pack = (entries) =>
+    new Blob([
+      JSON.stringify(
+        entries.map(({ path, mtime, data }) =>
+          data ? { path, mtime, size: data.length } : { path, mtime }
+        )
+      ) + "\n",
+      ...entries.filter((e) => e.data).map((e) => e.data),
+    ]);
+  const unpack = async function (body) {
+    const bytes = new Uint8Array(await body.arrayBuffer());
+    const newline = bytes.indexOf(10);
+    let offset = newline + 1;
+    return JSON.parse(new TextDecoder().decode(bytes.subarray(0, newline))).map(
+      ({ path, mtime, size }) => ({
+        path,
+        mtime,
+        data: size >= 0 ? bytes.slice(offset, (offset += size)) : null,
+      })
+    );
+  };
+
+  const loadFiles = async function () {
+    try {
+      const response = await fetch(channel + "files");
+      if (
+        response.ok &&
+        response.headers.get("Content-Type") == "application/octet-stream"
+      )
+        return await unpack(response);
+    } catch (e) {
+      // no storage: the files only live as long as Macaulay2
+    }
+    return null;
+  };
+
+  const restoreFiles = function (FS, entries) {
+    const failed = [];
+    for (const { path, mtime, data } of entries) {
+      const fullPath = home + "/" + path;
+      try {
+        if (data) {
+          FS.mkdirTree(fullPath.substring(0, fullPath.lastIndexOf("/")));
+          FS.writeFile(fullPath, data);
+        } else FS.mkdirTree(fullPath);
+        FS.utime(fullPath, mtime, mtime);
+      } catch (e) {
+        console.warn("could not restore " + fullPath, e);
+        failed.push(path);
+      }
+    }
+    saved = scanHome(FS);
+    failed.forEach((path) => saved.set(path, null)); // corrected at the first save
+  };
+
+  const saveChanges = function () {
+    if (!saved) return;
+    try {
+      const FS = self.Module.FS;
+      const current = scanHome(FS);
+      const entries = [];
+      for (const [path, stamp] of current)
+        if (saved.get(path) !== stamp) {
+          const fullPath = home + "/" + path;
+          entries.push({
+            path,
+            mtime: +FS.stat(fullPath).mtime,
+            data: stamp ? FS.readFile(fullPath) : null,
+          });
+        }
+      for (const path of saved.keys())
+        if (!current.has(path)) entries.push({ path });
+      saved = current;
+      if (entries.length == 0) return;
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", channel + "save", false);
+      xhr.send(pack(entries));
+    } catch (e) {
+      console.warn("could not save files", e);
+    }
+  };
+
   const syncGet = function (what) {
     const xhr = new XMLHttpRequest();
     xhr.open(
@@ -134,6 +240,7 @@
     started = true;
     flushOutput();
     post({ type: "idle" });
+    saveChanges();
     for (;;) {
       let messages;
       try {
@@ -282,9 +389,10 @@
     ({ channel, session, home } = e.data);
     const assets = e.data.assets;
     try {
-      const [wasm, data] = await Promise.all([
+      const [wasm, data, files] = await Promise.all([
         fetchAsset(assets + "M2-binary.wasm"),
         fetchAsset(assets + "M2.data"),
+        loadFiles(),
       ]);
       self.Module = {
         thisProgram: "/m2/bin/M2-binary", // M2 finds /m2/share/Macaulay2 relative to this
@@ -309,12 +417,14 @@
             FS.mkdirTree(home);
             self.Module.ENV.HOME = home;
             FS.chdir(home);
+            if (files) restoreFiles(FS, files);
           },
         ],
         print: (s) => console.log(s),
         printErr: (s) => console.warn(s),
         onExit: (code) => {
           flushOutput();
+          saveChanges();
           post({ type: "exit", code });
         },
         onAbort: (what) => {

@@ -138,8 +138,21 @@ const serviceWorkerReady = function () {
         throw new Error(
           "service workers are not available (private browsing?)"
         );
-      await navigator.serviceWorker.register(base + "m2wasm-sw.js");
+      const registration = await navigator.serviceWorker.register(
+        base + "m2wasm-sw.js"
+      );
       await navigator.serviceWorker.ready;
+      // a running engine keeps the service worker busy, which defers its
+      // updates: look for one now, and let it take over before starting (once
+      // the previous page's last input poll is over, see m2wasm-sw.js)
+      const stale = registration.waiting; // found earlier, still blocked by another tab
+      await registration.update().catch(() => null);
+      const update = registration.installing || registration.waiting;
+      if (update && update !== stale)
+        await new Promise((resolve) => {
+          navigator.serviceWorker.addEventListener("controllerchange", resolve);
+          setTimeout(resolve, 11000);
+        });
       if (!navigator.serviceWorker.controller)
         await new Promise((resolve, reject) => {
           navigator.serviceWorker.addEventListener("controllerchange", resolve);
