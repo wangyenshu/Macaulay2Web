@@ -458,8 +458,11 @@ const newEditorFileMaybe = function (newName: string, location?, missing?) {
   // missing = what to do if file missing : undefined/false = switch to new, true = do nothing
   if (!location) editor.focus({ preventScroll: true });
 
-  if ((fileName && fileName == newName && fileName != "./") || !newName) {
-    // file already open in editor
+  if (
+    (fileName && fileName == newName && !currentFileIsDirectory) ||
+    !newName
+  ) {
+    // file already open in editor (a directory is listed again: it may have changed)
     updateFileName(newName); // in case of positioning data
     if (location) selectRowColumn(editor, location);
     return;

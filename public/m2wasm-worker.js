@@ -44,6 +44,15 @@
   };
 
   // ---- file system requests from the page (editor, uploads)
+  const removeTree = function (FS, dir) {
+    for (const name of FS.readdir(dir))
+      if (name != "." && name != "..") {
+        const path = dir + "/" + name;
+        if (FS.isDir(FS.lstat(path).mode)) removeTree(FS, path);
+        else FS.unlink(path);
+      }
+    FS.rmdir(dir);
+  };
   const fsRequest = function (FS, op, path, data) {
     const stat = (p) => {
       try {
@@ -87,8 +96,12 @@
     }
     if (op == "delete") {
       if (!st) return "File does not exist.";
-      if (FS.isDir(st.mode)) FS.rmdir(path);
-      else if (FS.isFile(st.mode)) FS.unlink(path);
+      if (FS.isDir(st.mode)) {
+        // in the home directory, with its contents (they are kept otherwise)
+        const dir = FS.lookupPath(path).path;
+        if (dir.startsWith(home + "/")) removeTree(FS, dir);
+        else FS.rmdir(path);
+      } else if (FS.isFile(st.mode)) FS.unlink(path);
       else return "Only regular files and empty directories can be deleted.";
       return true;
     }
