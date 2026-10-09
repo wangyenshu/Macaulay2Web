@@ -6,7 +6,7 @@
 # Uses micromamba (downloaded on the fly if not on the PATH).
 set -euo pipefail
 
-SPEC="macaulay2${1:+=$1}"
+SPEC="macaulay2-vanilla${1:+=$1}"
 CHANNEL=https://repo.prefix.dev/emscripten-forge-4x
 DEST="$(cd "$(dirname "$0")" && pwd)/public/m2wasm"
 WORK="$(mktemp -d)"
