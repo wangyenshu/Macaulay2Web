@@ -80,7 +80,7 @@ Then publish `_site` to desired branches (e.g. gh-pages).
 
 How it works: `src/client/wasmEngine.ts` replaces the socket.io connection with an object that speaks the same events, `public/m2wasm-worker.js` runs Macaulay2, and the service worker `public/m2wasm-sw.js` passes input to it (Macaulay2 reads its input synchronously, and SharedArrayBuffer would require cross-origin isolation headers, which GitHub Pages cannot set), handles uploads and keeps the files. Differences with the server:
 
-* Files live in the browser (home directory `/home/web_user`); the editor and uploads (including `.tar.gz` archives and GitHub repositories) work on these files. They are kept in the browser's storage (IndexedDB), so they survive reloads, resets and browser restarts: they are saved whenever Macaulay2 waits for input, and uploads and editor saves as soon as they are made. Files are removed with the editor's delete buttons, or all at once by clearing the site's data in the browser.
+* Files live in the browser (home directory `/home/web_user`). They are kept in the browser's storage (IndexedDB), so they survive reloads, resets and browser restarts: they are saved whenever Macaulay2 waits for input, and uploads and editor saves as soon as they are made. Files are removed with the editor's delete buttons, or all at once by clearing the site's data in the browser.
 * Interrupting works whenever Macaulay2 calls into JavaScript, which most computations do frequently; otherwise interrupting a second time restarts Macaulay2.
 * External programs cannot be run, and features relying on them (`run`, `fork`, `help` in the 1.26.06 package...) fail; chat only echoes locally.
 
