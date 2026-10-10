@@ -51,7 +51,7 @@ The default local server is plain HTTP on port `8002`.
 
 ## WebAssembly Engine
 
-Instead of a Macaulay2 server, the client can run Macaulay2 compiled to WebAssembly in the browser: the [emscripten-forge `macaulay2` package](https://prefix.dev/channels/emscripten-forge-4x/packages/macaulay2) runs in a web worker as `M2 --webapp`, and the interface is unchanged. Only static files are needed, so this works on GitHub Pages.
+Instead of a Macaulay2 server, the client can run Macaulay2 compiled to WebAssembly in the browser: the [emscripten-forge `macaulay2-vanilla` package](https://prefix.dev/channels/emscripten-forge-4x/packages/macaulay2-vanilla) runs in a web worker as `M2 --webapp`, and the interface is unchanged. Only static files are needed, so this works on GitHub Pages.
 
 Guide for GitHub Pages Deployment:
 
@@ -76,7 +76,7 @@ Then publish `_site` to desired branches (e.g. gh-pages).
 | `npm run build:debug`, `build:debug-minimal`, `build:debug-tutorial` | server |
 | `npm run build:wasm` | wasm |
 | any `webpack` command with `--env wasm` added | wasm |
-* `.github/workflows/pages.yml` builds and deploys the site to GitHub Pages.
+* `.github/workflows/deploy-wasm.yml` builds and deploys the site to GitHub Pages.
 
 How it works: `src/client/wasmEngine.ts` replaces the socket.io connection with an object that speaks the same events, `public/m2wasm-worker.js` runs Macaulay2, and the service worker `public/m2wasm-sw.js` passes input to it (Macaulay2 reads its input synchronously, and SharedArrayBuffer would require cross-origin isolation headers, which GitHub Pages cannot set), handles uploads and keeps the files. Differences with the server:
 
