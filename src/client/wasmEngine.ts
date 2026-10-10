@@ -156,6 +156,9 @@ const serviceWorkerReady = function () {
       if (!navigator.serviceWorker.controller)
         await new Promise((resolve, reject) => {
           navigator.serviceWorker.addEventListener("controllerchange", resolve);
+          // e.g. after a hard reload, which bypasses the service worker
+          if (registration.active)
+            registration.active.postMessage("m2wasm-claim");
           setTimeout(
             () =>
               navigator.serviceWorker.controller
@@ -164,7 +167,10 @@ const serviceWorkerReady = function () {
             5000
           );
         });
-    })();
+    })().catch((err) => {
+      swReady = null; // so that Reset tries again
+      throw err;
+    });
   return swReady;
 };
 
@@ -335,6 +341,7 @@ class WasmSocket {
           )
         );
     } else if (msg.type == "error") this.crash(msg.message);
+    else if (msg.type == "warning") this.systemChat(msg.message);
   }
 
   private send(msg) {
@@ -450,12 +457,15 @@ class WasmSocket {
   async upload(fields, files: { name: string; data: ArrayBuffer }[]) {
     if (fields.tutorial) return { status: 200 }; // already loaded by the page; nothing to keep
     let uploaded = "";
-    const write = (name: string, data: Uint8Array | null) =>
-      this.fsRequest(
+    const failed = [];
+    const write = async (name: string, data: Uint8Array | null) => {
+      const result = await this.fsRequest(
         data ? "write" : "mkdir",
         resolvePath(name),
         data && { b64: toBase64(data) }
       );
+      if (result !== true) failed.push(name);
+    };
     if (fields.githubUser) {
       let github;
       try {
@@ -467,22 +477,37 @@ class WasmSocket {
       } catch (err) {
         return { status: 502, text: escapeHTML(err.message) };
       }
-      github.files.forEach((file) => write(file.name, file.data));
+      await Promise.all(
+        github.files.map((file) => write(file.name, file.data))
+      );
       uploaded = escapeHTML(github.dir) + " (extracted)<br/>";
     }
     for (const file of files) {
+      const failures = failed.length;
       if (/\.(tar\.gz|tgz|tar)$/.test(file.name)) {
         const dir = file.name.substring(0, file.name.lastIndexOf("/") + 1);
-        (await untar(file.data)).forEach((entry) =>
-          write(dir + entry.name, entry.data)
+        await Promise.all(
+          (
+            await untar(file.data)
+          ).map((entry) => write(dir + entry.name, entry.data))
         );
         uploaded += escapeHTML(file.name) + " (extracted)<br/>";
       } else {
-        write(file.name, new Uint8Array(file.data));
+        await write(file.name, new Uint8Array(file.data));
         uploaded += escapeHTML(file.name) + "<br/>";
       }
-      this.fire("filechanged", { fileName: file.name, hash: fields.hash });
+      if (failed.length == failures)
+        this.fire("filechanged", { fileName: file.name, hash: fields.hash });
     }
+    // (written once Macaulay2 waits for input: an upload during a computation waits for it)
+    if (failed.length > 0)
+      return {
+        status: 500,
+        text:
+          "The following files could not be written:<br/><b>" +
+          failed.map(escapeHTML).join("<br/>") +
+          "</b>",
+      };
     return {
       status: 200,
       text: fields.noreply

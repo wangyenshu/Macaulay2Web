@@ -28,6 +28,10 @@ self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) =>
   event.waitUntil(self.clients.claim())
 );
+// asked by pages loaded without the service worker (hard reload, see wasmEngine.ts)
+self.addEventListener("message", (event) => {
+  if (event.data == "m2wasm-claim") event.waitUntil(self.clients.claim());
+});
 
 const json = (body) =>
   new Response(JSON.stringify(body), {
@@ -71,7 +75,8 @@ let database = null; // the connection (a promise)
 const openDatabase = () =>
   database ||
   (database = new Promise((resolve, reject) => {
-    const request = indexedDB.open("m2wasm", 1);
+    // one per site: sites on the same domain (user.github.io/...) share IndexedDB
+    const request = indexedDB.open("m2wasm " + self.registration.scope, 1);
     request.onupgradeneeded = () => request.result.createObjectStore("home");
     request.onsuccess = () => {
       const db = request.result;
@@ -155,9 +160,9 @@ const saveUploads = async function (fields, files) {
   const entries = [];
   for (const file of files) {
     if (/\.(tar\.gz|tgz|tar)$/.test(file.name)) continue;
-    if (file.name.startsWith("/") || /(^|\/)\.\.(\/|$)/.test(file.name))
-      continue;
-    const path = file.name
+    const name = file.name.replace(/^\/home\/web_user\//, ""); // the home directory, see wasmEngine.ts
+    if (name.startsWith("/") || /(^|\/)\.\.(\/|$)/.test(name)) continue;
+    const path = name
       .split("/")
       .filter((p) => p && p != ".")
       .join("/");

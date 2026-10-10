@@ -122,6 +122,17 @@
           result = fsRequest(self.Module.FS, msg.op, msg.path, msg.data);
         } catch (e) {
           error = String((e && e.message) || e);
+          // the service worker may have stored this upload already: let the
+          // next save put back what really is there
+          if (saved && msg.op == "write" && msg.path.startsWith(home + "/"))
+            saved.set(
+              msg.path
+                .substring(home.length + 1)
+                .split("/")
+                .filter((p) => p && p != ".")
+                .join("/"),
+              null
+            );
         }
         post({ type: "fs", id: msg.id, result, error });
       }
@@ -205,6 +216,7 @@
     failed.forEach((path) => saved.set(path, null)); // corrected at the first save
   };
 
+  let saveFailed = false;
   const saveChanges = function () {
     if (!saved) return;
     try {
@@ -222,13 +234,23 @@
         }
       for (const path of saved.keys())
         if (!current.has(path)) entries.push({ path });
-      saved = current;
-      if (entries.length == 0) return;
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", channel + "save", false);
-      xhr.send(pack(entries));
+      if (entries.length > 0) {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", channel + "save", false);
+        xhr.send(pack(entries));
+        if (xhr.status != 200) throw new Error("HTTP " + xhr.status);
+      }
+      saved = current; // only once stored: otherwise, sent again next time
+      saveFailed = false;
     } catch (e) {
       console.warn("could not save files", e);
+      if (!saveFailed)
+        post({
+          type: "warning",
+          message:
+            "Your files could not be saved in the browser's storage; trying again at the next prompt.",
+        });
+      saveFailed = true;
     }
   };
 
@@ -442,6 +464,7 @@
         },
         onAbort: (what) => {
           flushOutput();
+          saveChanges();
           post({ type: "error", message: String(what) });
         },
       };
